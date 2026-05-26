@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>デジタル単語帳</title>
+  <style>
+    :root {
+      --bg:      #f0f4f8;
+      --card:    #ffffff;
+      --primary: #4a90d9;
+      --correct: #27ae60;
+      --wrong:   #e74c3c;
+      --text:    #2c3e50;
+      --sub:     #7f8c8d;
+      --border:  #e0e6ed;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+    }
+
+    #app { width: 100%; max-width: 480px; padding: 24px 16px 40px; }
+
+    h1 { font-size: 1.4rem; font-weight: 700; text-align: center; margin-bottom: 24px; color: var(--primary); }
+
+    /* ── スクリーン切り替え ── */
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    /* ── セクションラベル ── */
+    .label {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--sub);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    /* ── カード型リスト ── */
+    .list {
+      background: var(--card);
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    .list-item {
+      display: flex;
+      align-items: center;
+      padding: 15px 16px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+    }
+    .list-item:last-child { border-bottom: none; }
+    .list-item input {
+      width: 20px; height: 20px;
+      margin-right: 14px;
+      cursor: pointer;
+      accent-color: var(--primary);
+      flex-shrink: 0;
+    }
+    .list-item label { flex: 1; cursor: pointer; font-size: 1rem; }
+    .count { font-size: 0.85rem; color: var(--sub); }
+
+    /* ── ボタン ── */
+    .btn {
+      display: block; width: 100%;
+      padding: 16px;
+      border: none; border-radius: 14px;
+      font-size: 1.05rem; font-weight: 700;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+    }
+    .btn:active { transform: scale(0.97); opacity: .85; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-correct { background: var(--correct); color: #fff; }
+    .btn-wrong   { background: var(--wrong);   color: #fff; }
+    .btn-outline {
+      background: transparent;
+      border: 2px solid var(--primary);
+      color: var(--primary);
+    }
+    .btn-row { display: flex; gap: 10px; }
+    .btn-row .btn { flex: 1; }
+
+    /* ── 進捗 ── */
+    .progress-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .progress-text { font-size: 0.9rem; color: var(--sub); font-weight: 600; }
+    .badge {
+      font-size: 0.8rem;
+      background: #e8f0fe;
+      color: var(--primary);
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-weight: 600;
+    }
+    .bar {
+      height: 6px; background: var(--border);
+      border-radius: 3px; margin-bottom: 22px; overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%; background: var(--primary);
+      border-radius: 3px; transition: width .4s ease;
+    }
+
+    /* ── 単語カード ── */
+    .word-card {
+      background: var(--card);
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      min-height: 220px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 24px;
+      text-align: center;
+      cursor: pointer;
+      margin-bottom: 18px;
+    }
+    .word-card.answered { cursor: default; }
+    .q-main  { font-size: 1.6rem; font-weight: 700; line-height: 1.4; }
+    .q-kana  { font-size: 1rem; color: var(--sub); margin-top: 8px; }
+    .q-hint  { font-size: 0.9rem; color: var(--sub); margin-top: 20px; }
+    .divider {
+      width: 100%; border: none;
+      border-top: 1px solid var(--border);
+      margin: 22px 0;
+    }
+    .a-main { font-size: 1.25rem; font-weight: 700; color: var(--correct); }
+    .a-kana { font-size: 0.95rem; color: var(--sub); margin-top: 6px; }
+    .answer-area { width: 100%; }
+
+    /* ── 結果 ── */
+    .result-box {
+      background: var(--card);
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      text-align: center;
+      padding: 32px 24px;
+      margin-bottom: 20px;
+    }
+    .score-num   { font-size: 3.2rem; font-weight: 800; color: var(--primary); }
+    .score-pct   { font-size: 1rem; color: var(--sub); margin-top: 4px; }
+    .score-msg   { font-size: 1.15rem; font-weight: 700; margin-top: 16px; }
+    .wrong-box {
+      background: var(--card);
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    .wrong-header {
+      padding: 12px 16px;
+      background: #fff5f5;
+      color: var(--wrong);
+      font-weight: 700;
+      font-size: 0.9rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .wrong-item {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .wrong-item:last-child { border-bottom: none; }
+    .wi-en   { font-weight: 700; font-size: 0.95rem; }
+    .wi-kana { font-size: 0.82rem; color: var(--sub); }
+    .wi-ja   { font-size: 0.9rem; color: var(--sub); margin-top: 2px; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ① セットアップ画面 -->
+  <div id="s-setup" class="screen active">
+    <h1>📖 デジタル単語帳</h1>
+    <div class="label">出題セット</div>
+    <div class="list" id="set-list">
+      <div class="list-item"><label>読み込み中...</label></div>
+    </div>
+    <div class="label">出題方向</div>
+    <div class="list">
+      <div class="list-item" onclick="pickDir(this)">
+        <input type="radio" name="dir" id="d1" value="1">
+        <label for="d1">英語 → 日本語</label>
+      </div>
+      <div class="list-item" onclick="pickDir(this)">
+        <input type="radio" name="dir" id="d2" value="2">
+        <label for="d2">日本語 → 英語</label>
+      </div>
+      <div class="list-item" onclick="pickDir(this)">
+        <input type="radio" name="dir" id="d3" value="3" checked>
+        <label for="d3">ランダム（どちらも出る）</label>
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="startQuiz()">スタート</button>
+  </div>
+
+  <!-- ② クイズ画面 -->
+  <div id="s-quiz" class="screen">
+    <div class="progress-row">
+      <span class="progress-text" id="prog-text">1 / 30</span>
+      <span class="badge" id="card-set"></span>
+    </div>
+    <div class="bar"><div class="bar-fill" id="bar-fill" style="width:0%"></div></div>
+
+    <div class="word-card" id="word-card" onclick="reveal()">
+      <div class="q-main" id="q-main"></div>
+      <div class="q-kana" id="q-kana"></div>
+      <div class="q-hint" id="q-hint">タップして答えを確認</div>
+      <div class="answer-area" id="answer-area" style="display:none">
+        <hr class="divider">
+        <div class="a-main" id="a-main"></div>
+        <div class="a-kana" id="a-kana"></div>
+      </div>
+    </div>
+
+    <div class="btn-row" id="ans-btns" style="display:none">
+      <button class="btn btn-wrong"   onclick="mark(false)">✗ 不正解</button>
+      <button class="btn btn-correct" onclick="mark(true)">○ 正解</button>
+    </div>
+  </div>
+
+  <!-- ③ 結果画面 -->
+  <div id="s-result" class="screen">
+    <h1>📖 デジタル単語帳</h1>
+    <div class="result-box">
+      <div class="score-num" id="r-score"></div>
+      <div class="score-pct"  id="r-pct"></div>
+      <div class="score-msg"  id="r-msg"></div>
+    </div>
+    <div class="wrong-box" id="wrong-box" style="display:none">
+      <div class="wrong-header">📝 要復習リスト</div>
+      <div id="wrong-items"></div>
+    </div>
+    <div class="btn-row" style="margin-bottom:12px">
+      <button class="btn btn-outline" onclick="goSetup()">最初から</button>
+      <button class="btn btn-primary" id="retry-btn" onclick="retryWrong()" style="display:none">
+        間違えた問題だけ
+      </button>
+    </div>
+  </div>
+
+</div>
+<script>
+// ── 状態 ─────────────────────────────────────────────────
+const S = {
+  sets: {},       // { name: [word, ...] }
+  deck: [],
+  cur:  0,
+  ok:   0,
+  ng:   [],
+  dir:  '3',
+  done: false,    // カード反転済みフラグ
+};
+
+// ── CSV 読み込み ──────────────────────────────────────────
+function parseCSV(name, text) {
+  return text.trim().split('\n').slice(1)
+    .filter(l => l.trim())
+    .map(l => {
+      const i1 = l.indexOf(','), i2 = l.indexOf(',', i1 + 1);
+      return {
+        set:  name,
+        en:   l.slice(0, i1).trim(),
+        kana: l.slice(i1 + 1, i2).trim(),
+        ja:   l.slice(i2 + 1).trim(),
+      };
+    });
+}
+
+async function init() {
+  const manifest = await fetch('words/manifest.json').then(r => r.json());
+  const listEl = document.getElementById('set-list');
+  listEl.innerHTML = '';
+
+  for (const name of manifest) {
+    const words = parseCSV(name, await fetch(`words/${name}.csv`).then(r => r.text()));
+    S.sets[name] = words;
+
+    const item = document.createElement('div');
+    item.className = 'list-item';
+    item.innerHTML = `
+      <input type="checkbox" id="cb-${name}" value="${name}" checked>
+      <label for="cb-${name}">${name}</label>
+      <span class="count">${words.length}語</span>`;
+    item.addEventListener('click', e => {
+      if (e.target.tagName !== 'INPUT') {
+        const cb = item.querySelector('input');
+        cb.checked = !cb.checked;
+      }
+    });
+    listEl.appendChild(item);
+  }
+}
+
+// ── セットアップ ──────────────────────────────────────────
+function pickDir(el) { el.querySelector('input').checked = true; }
+
+function startQuiz() {
+  const checked = [...document.querySelectorAll('#set-list input:checked')];
+  if (!checked.length) { alert('セットを1つ以上選んでね！'); return; }
+
+  S.dir  = document.querySelector('input[name=dir]:checked').value;
+  S.deck = [];
+  checked.forEach(cb => S.deck.push(...S.sets[cb.value]));
+  shuffle(S.deck);
+  S.cur = 0; S.ok = 0; S.ng = [];
+
+  show('quiz');
+  renderCard();
+}
+
+// ── クイズ ────────────────────────────────────────────────
+function cardDir() {
+  return S.dir === '3'
+    ? (Math.random() < .5 ? 'en' : 'ja')
+    : (S.dir === '1' ? 'en' : 'ja');
+}
+
+function renderCard() {
+  const w = S.deck[S.cur];
+  const total = S.deck.length;
+  S.done = false;
+
+  document.getElementById('prog-text').textContent = `${S.cur + 1} / ${total}`;
+  document.getElementById('card-set').textContent  = w.set;
+  document.getElementById('bar-fill').style.width  = `${(S.cur / total) * 100}%`;
+
+  const d = cardDir();
+  w._d = d;
+
+  document.getElementById('q-main').textContent = d === 'en' ? w.en  : w.ja;
+  document.getElementById('q-kana').textContent = d === 'en' ? w.kana : '';
+  document.getElementById('a-main').textContent = d === 'en' ? w.ja   : w.en;
+  document.getElementById('a-kana').textContent = d === 'en' ? ''     : `読み: ${w.kana}`;
+
+  document.getElementById('q-hint').style.display    = '';
+  document.getElementById('answer-area').style.display = 'none';
+  document.getElementById('ans-btns').style.display  = 'none';
+  const card = document.getElementById('word-card');
+  card.classList.remove('answered');
+}
+
+function reveal() {
+  if (S.done) return;
+  S.done = true;
+  document.getElementById('q-hint').style.display     = 'none';
+  document.getElementById('answer-area').style.display = '';
+  document.getElementById('ans-btns').style.display    = '';
+  document.getElementById('word-card').classList.add('answered');
+}
+
+function mark(ok) {
+  if (ok) S.ok++;
+  else     S.ng.push(S.deck[S.cur]);
+  S.cur++;
+  if (S.cur < S.deck.length) renderCard();
+  else                        showResult();
+}
+
+// ── 結果 ──────────────────────────────────────────────────
+function showResult() {
+  const total = S.deck.length;
+  const pct   = Math.round(S.ok / total * 100);
+  document.getElementById('r-score').textContent = `${S.ok} / ${total}`;
+  document.getElementById('r-pct').textContent   = `${pct}%`;
+  document.getElementById('r-msg').textContent   =
+    pct === 100 ? '🎉 満点！完璧だよ！' :
+    pct >= 80   ? '👏 よくできました！' :
+    pct >= 60   ? '💪 半分以上正解！'   : '📖 もう一度チャレンジしよう！';
+
+  const wrongBox   = document.getElementById('wrong-box');
+  const wrongItems = document.getElementById('wrong-items');
+  const retryBtn   = document.getElementById('retry-btn');
+  wrongItems.innerHTML = '';
+
+  if (S.ng.length) {
+    S.ng.forEach(w => {
+      const el = document.createElement('div');
+      el.className = 'wrong-item';
+      el.innerHTML = `<div class="wi-en">${w.en}</div><div class="wi-kana">${w.kana}</div><div class="wi-ja">${w.ja}</div>`;
+      wrongItems.appendChild(el);
+    });
+    wrongBox.style.display  = '';
+    retryBtn.style.display  = '';
+  } else {
+    wrongBox.style.display  = 'none';
+    retryBtn.style.display  = 'none';
+  }
+  show('result');
+}
+
+function retryWrong() {
+  S.deck = [...S.ng];
+  shuffle(S.deck);
+  S.cur = 0; S.ok = 0; S.ng = [];
+  show('quiz'); renderCard();
+}
+
+function goSetup() { show('setup'); }
+
+// ── ユーティリティ ────────────────────────────────────────
+function show(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(`s-${name}`).classList.add('active');
+}
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+}
+
+init();
+</script>
+</body>
+</html>
