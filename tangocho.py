@@ -1,68 +1,100 @@
 #!/usr/bin/env python3
 """
-デジタル単語帳 - Unit 5 & 6
-ランダム出題・カタカナ読み付き答え合わせアプリ
+デジタル単語帳
+
+【単語の追加・切り替え方法】
+  words/ フォルダに CSV ファイルを置くだけで自動で認識されます。
+  例: words/unit7.csv, words/midterm.csv など
+
+【CSV ファイルのフォーマット】
+  1行目（ヘッダー）: english,kana,japanese
+  2行目以降（単語）: run out of ~,ラン アウト オブ,不足する
 """
+import csv
 import random
 import sys
+from pathlib import Path
+
+WORDS_DIR = Path(__file__).parent / "words"
+
 
 # ─────────────────────────────────────────────────────────
-#  単語データ（Unit 5・Unit 6）
+#  CSV 読み込み・セット検出
 # ─────────────────────────────────────────────────────────
-WORDS = [
-    # ── Unit 5 ──────────────────────────────────────────
-    {"unit": 5, "en": "run out of ~",          "kana": "ラン アウト オブ",          "ja": "不足する、なくなる、足りなくなる"},
-    {"unit": 5, "en": "date back to ~",        "kana": "デイト バック トゥ",        "ja": "〜にさかのぼる、〜の時代から続く"},
-    {"unit": 5, "en": "trace",                 "kana": "トレイス",                  "ja": "（起源・歴史などを）たどる、さかのぼって調べる"},
-    {"unit": 5, "en": "wild",                  "kana": "ワイルド",                  "ja": "野生の、荒れた"},
-    {"unit": 5, "en": "commonly",              "kana": "コモンリー",                "ja": "一般に、普通に"},
-    {"unit": 5, "en": "ancestor",              "kana": "アンセスター",              "ja": "祖先、先祖"},
-    {"unit": 5, "en": "domestic",              "kana": "ドメスティック",            "ja": "家庭の、国内の、（動物が）飼いならされた"},
-    {"unit": 5, "en": "temporary",             "kana": "テンポラリー",              "ja": "一時的な、仮の"},
-    {"unit": 5, "en": "a period of time",      "kana": "ア ピリオド オブ タイム",   "ja": "一定の期間"},
-    {"unit": 5, "en": "permanent",             "kana": "パーマネント",              "ja": "永続的な、永久の"},
-    {"unit": 5, "en": "disturb",               "kana": "ディスターブ",              "ja": "乱す、不安にさせる"},
-    {"unit": 5, "en": "even",                  "kana": "イーブン",                  "ja": "〜でさえ／平らな、均等な"},
-    {"unit": 5, "en": "be responsible for ~",  "kana": "ビー レスポンシブル フォー","ja": "〜に対して責任がある、〜の原因である"},
-    {"unit": 5, "en": "fault",                 "kana": "フォールト",                "ja": "過失、欠点、責任"},
-    {"unit": 5, "en": "run a restaurant",      "kana": "ラン ア レストラン",        "ja": "レストランを経営する"},
-    {"unit": 5, "en": "shipping",              "kana": "シッピング",                "ja": "輸送、出荷、海運"},
-    {"unit": 5, "en": "blame ~ for ...",       "kana": "ブレイム フォー",           "ja": "〜のことで…を非難する、…の責任を〜のせいにする"},
-    {"unit": 5, "en": "shortage",              "kana": "ショーテージ",              "ja": "不足、欠乏"},
-    {"unit": 5, "en": "ascribe ~ to ...",      "kana": "アスクライブ トゥ",         "ja": "〜を…のせいにする、〜の原因を…とみなす"},
-    # ── Unit 6 ──────────────────────────────────────────
-    {"unit": 6, "en": "exclude",               "kana": "エクスクルード",            "ja": "〜を除外する、締め出す"},
-    {"unit": 6, "en": "release",               "kana": "リリース",                  "ja": "〜を解放する、公開する／釈放"},
-    {"unit": 6, "en": "opponent",              "kana": "オポーネント",              "ja": "反対者、対戦相手"},
-    {"unit": 6, "en": "disagree",              "kana": "ディスアグリー",            "ja": "同意しない、意見が合わない"},
-    {"unit": 6, "en": "punishment",            "kana": "パニッシュメント",          "ja": "罰、刑罰"},
-    {"unit": 6, "en": "confidence",            "kana": "コンフィデンス",            "ja": "自信、信頼"},
-    {"unit": 6, "en": "abolish",               "kana": "アボリッシュ",              "ja": "〜を廃止する"},
-    {"unit": 6, "en": "declare",               "kana": "デクレア",                  "ja": "〜を宣言する、表明する"},
-    {"unit": 6, "en": "position",              "kana": "ポジション",                "ja": "立場、位置、職"},
-    {"unit": 6, "en": "matter",                "kana": "マター",                    "ja": "問題、事柄／重要である"},
-    {"unit": 6, "en": "worldwide",             "kana": "ワールドワイド",            "ja": "世界中の、世界的に"},
-]
+
+def detect_sets() -> dict[str, Path]:
+    """words/ 内の CSV を検出してファイル名→パスの辞書を返す"""
+    if not WORDS_DIR.exists():
+        print(f"\n  エラー: words/ フォルダが見つかりません。")
+        print(f"  場所: {WORDS_DIR}")
+        sys.exit(1)
+
+    found = {p.stem: p for p in sorted(WORDS_DIR.glob("*.csv"))}
+    if not found:
+        print(f"\n  エラー: words/ フォルダに CSV ファイルがありません。")
+        sys.exit(1)
+    return found
+
+
+def load_csv(name: str, path: Path) -> list[dict]:
+    """CSV 1ファイルを読み込んで単語リストを返す"""
+    words = []
+    with open(path, encoding="utf-8", newline="") as f:
+        for row in csv.DictReader(f):
+            words.append({
+                "set":  name,
+                "en":   row["english"].strip(),
+                "kana": row["kana"].strip(),
+                "ja":   row["japanese"].strip(),
+            })
+    return words
+
+
+def word_count(path: Path) -> int:
+    with open(path, encoding="utf-8") as f:
+        return sum(1 for _ in f) - 1  # ヘッダー行を除く
+
 
 # ─────────────────────────────────────────────────────────
 #  設定メニュー
 # ─────────────────────────────────────────────────────────
-def select_unit():
-    print("\n  出題範囲を選んでね:")
-    print("    1. Unit 5 のみ（19語）")
-    print("    2. Unit 6 のみ（11語）")
-    print("    3. Unit 5 + 6（全30語）")
-    while True:
-        c = input("  選択 [1/2/3]: ").strip()
-        if c == "1":
-            return [w for w in WORDS if w["unit"] == 5]
-        if c == "2":
-            return [w for w in WORDS if w["unit"] == 6]
-        if c == "3":
-            return WORDS[:]
-        print("  1〜3 で入力してね。")
 
-def select_direction():
+def select_sets(sets: dict[str, Path]) -> list[dict]:
+    """出題セットを選択（複数選択・全選択対応）"""
+    names = list(sets.keys())
+
+    print("\n  出題するセットを選んでね:")
+    for i, name in enumerate(names, 1):
+        print(f"    {i}. {name}（{word_count(sets[name])}語）")
+    if len(names) > 1:
+        print(f"    a. すべて（合計 {sum(word_count(p) for p in sets.values())}語）")
+    print()
+    print("  複数選ぶときはカンマ区切り（例: 1,2）")
+
+    while True:
+        raw = input("  選択: ").strip().lower()
+
+        if raw == "a" and len(names) > 1:
+            selected = names
+            break
+
+        parts = [p.strip() for p in raw.split(",")]
+        try:
+            indices = [int(p) - 1 for p in parts]
+            if parts and all(0 <= idx < len(names) for idx in indices):
+                selected = [names[idx] for idx in indices]
+                break
+        except ValueError:
+            pass
+        print(f"  1〜{len(names)} の番号か a を入力してね。")
+
+    pool = []
+    for name in selected:
+        pool.extend(load_csv(name, sets[name]))
+    return pool
+
+
+def select_direction() -> str:
     print("\n  出題方向を選んでね:")
     print("    1. 英語 → 日本語")
     print("    2. 日本語 → 英語")
@@ -73,28 +105,28 @@ def select_direction():
             return c
         print("  1〜3 で入力してね。")
 
+
 # ─────────────────────────────────────────────────────────
 #  クイズ本体
 # ─────────────────────────────────────────────────────────
-def quiz(pool, direction):
+
+def quiz(pool: list[dict], direction: str):
     deck = pool[:]
     random.shuffle(deck)
-    total   = len(deck)
-    correct = 0
+    total      = len(deck)
+    correct    = 0
     wrong_list = []
 
     for i, word in enumerate(deck, 1):
         print(f"\n  {'─' * 43}")
-        print(f"  【 {i} / {total} 】  Unit {word['unit']}")
+        print(f"  【 {i} / {total} 】  {word['set']}")
         print(f"  {'─' * 43}")
 
-        # 出題方向を決定
         if direction == "3":
             d = random.choice(["en_to_ja", "ja_to_en"])
         else:
             d = "en_to_ja" if direction == "1" else "ja_to_en"
 
-        # 問題表示
         if d == "en_to_ja":
             print(f"\n  ❓  {word['en']}")
             print(f"      読み: {word['kana']}")
@@ -106,7 +138,6 @@ def quiz(pool, direction):
             print(f"\n  ✅  {word['en']}")
             print(f"      読み: {word['kana']}")
 
-        # 自己採点
         while True:
             mark = input("\n  正解した？  [o = ○正解 / x = ✗不正解]: ").strip().lower()
             if mark in ("o", "○", "0"):
@@ -119,7 +150,6 @@ def quiz(pool, direction):
                 break
             print("  o か x で入力してね。")
 
-    # ── 結果 ────────────────────────────────────────────
     pct = correct / total * 100
     print(f"\n  {'═' * 43}")
     print(f"  結果: {correct} / {total} 問正解！  （{pct:.0f}%）")
@@ -133,22 +163,24 @@ def quiz(pool, direction):
         print("  📖 もう一度チャレンジしてみよう！")
     print(f"  {'═' * 43}")
 
-    # 間違えた単語の一覧
     if wrong_list:
         print(f"\n  【要復習リスト】")
         for w in wrong_list:
             print(f"  ・{w['en']}（{w['kana']}）→ {w['ja']}")
 
+
 # ─────────────────────────────────────────────────────────
 #  メイン
 # ─────────────────────────────────────────────────────────
+
 def main():
     print("\n  ╔═══════════════════════════════════════════╗")
-    print("  ║     デジタル単語帳  Unit 5 & 6           ║")
+    print("  ║         デジタル単語帳                    ║")
     print("  ╚═══════════════════════════════════════════╝")
 
     while True:
-        pool      = select_unit()
+        sets      = detect_sets()
+        pool      = select_sets(sets)
         direction = select_direction()
         quiz(pool, direction)
 
@@ -156,6 +188,7 @@ def main():
         if input().strip().lower() != "y":
             print("\n  お疲れ様！また勉強しようね！👋\n")
             break
+
 
 if __name__ == "__main__":
     try:
