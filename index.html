@@ -146,6 +146,52 @@
     .a-kana { font-size: 0.95rem; color: var(--sub); margin-top: 6px; }
     .answer-area { width: 100%; }
 
+    /* ── クイズナビ ── */
+    .quiz-nav {
+      display: flex;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .btn-home {
+      background: none;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      color: var(--sub);
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 6px 12px;
+      cursor: pointer;
+      transition: background .15s, color .15s;
+    }
+    .btn-home:hover { background: var(--border); color: var(--text); }
+    .btn-home:active { transform: scale(0.96); }
+
+    /* ── 類似単語 ── */
+    .similar-box {
+      margin-top: 14px;
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+      text-align: left;
+    }
+    .similar-label {
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: #e67e22;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+    .similar-item {
+      background: #fff8f0;
+      border: 1px solid #fde8cc;
+      border-radius: 10px;
+      padding: 9px 12px;
+      margin-bottom: 6px;
+    }
+    .similar-item:last-child { margin-bottom: 0; }
+    .si-main { font-weight: 700; font-size: 0.9rem; }
+    .si-kana { font-size: 0.78rem; color: var(--sub); }
+    .si-sub  { font-size: 0.85rem; color: var(--text); margin-top: 2px; }
+
     /* ── 結果 ── */
     .result-box {
       background: var(--card);
@@ -213,6 +259,9 @@
 
   <!-- ② クイズ画面 -->
   <div id="s-quiz" class="screen">
+    <div class="quiz-nav">
+      <button class="btn-home" onclick="goSetup()">← ホーム</button>
+    </div>
     <div class="progress-row">
       <span class="progress-text" id="prog-text">1 / 30</span>
       <span class="badge" id="card-set"></span>
@@ -227,6 +276,10 @@
         <hr class="divider">
         <div class="a-main" id="a-main"></div>
         <div class="a-kana" id="a-kana"></div>
+        <div id="similar-area" style="display:none" class="similar-box">
+          <div class="similar-label">⚠ 混同しやすい単語</div>
+          <div id="similar-items"></div>
+        </div>
       </div>
     </div>
 
@@ -350,9 +403,10 @@ function renderCard() {
   document.getElementById('a-main').textContent = d === 'en' ? w.ja   : w.en;
   document.getElementById('a-kana').textContent = d === 'en' ? ''     : `読み: ${w.kana}`;
 
-  document.getElementById('q-hint').style.display    = '';
+  document.getElementById('q-hint').style.display      = '';
   document.getElementById('answer-area').style.display = 'none';
-  document.getElementById('ans-btns').style.display  = 'none';
+  document.getElementById('ans-btns').style.display    = 'none';
+  document.getElementById('similar-area').style.display = 'none';
   const card = document.getElementById('word-card');
   card.classList.remove('answered');
 }
@@ -364,6 +418,7 @@ function reveal() {
   document.getElementById('answer-area').style.display = '';
   document.getElementById('ans-btns').style.display    = '';
   document.getElementById('word-card').classList.add('answered');
+  renderSimilar(S.deck[S.cur]);
 }
 
 function mark(ok) {
@@ -414,6 +469,82 @@ function retryWrong() {
 }
 
 function goSetup() { show('setup'); }
+
+// ── 類似単語 ──────────────────────────────────────────────
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({length: m + 1}, (_, i) => Array.from({length: n + 1}, (_, j) => i || j));
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = a[i-1] === b[j-1]
+        ? dp[i-1][j-1]
+        : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+  return dp[m][n];
+}
+
+function enSimilarity(a, b) {
+  a = a.toLowerCase(); b = b.toLowerCase();
+  if (a === b) return 0;
+  const dist = levenshtein(a, b);
+  const maxLen = Math.max(a.length, b.length);
+  const ratio = 1 - dist / maxLen;
+  // 4文字以上の共通プレフィックスでボーナス
+  let pre = 0;
+  while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
+  return ratio + (pre >= 4 ? 0.15 : 0);
+}
+
+function jaSimilarity(a, b) {
+  if (a === b) return 0;
+  // 助詞・送り仮名など意味の薄い文字を除いて比較
+  const ignore = new Set('するなのをはがにでもとやへからまでてしたけどよねだわいうこもれのー〜、。');
+  const charsA = new Set([...a].filter(c => !ignore.has(c)));
+  const charsB = new Set([...b].filter(c => !ignore.has(c)));
+  if (charsA.size === 0 || charsB.size === 0) return 0;
+  const shared = [...charsA].filter(c => charsB.has(c)).length;
+  return shared / Math.max(charsA.size, charsB.size);
+}
+
+function getSimilarWords(current, pool, maxCount = 2) {
+  const d = current._d;
+  return pool
+    .filter(w => w !== current)
+    .map(w => ({
+      w,
+      score: d === 'en'
+        ? enSimilarity(current.en, w.en)
+        : jaSimilarity(current.ja, w.ja),
+    }))
+    .filter(x => x.score >= 0.55)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxCount)
+    .map(x => x.w);
+}
+
+function renderSimilar(word) {
+  const similar = getSimilarWords(word, S.deck);
+  const area  = document.getElementById('similar-area');
+  const list  = document.getElementById('similar-items');
+  list.innerHTML = '';
+  if (!similar.length) { area.style.display = 'none'; return; }
+
+  similar.forEach(w => {
+    const el = document.createElement('div');
+    el.className = 'similar-item';
+    if (word._d === 'en') {
+      el.innerHTML =
+        `<div class="si-main">${w.en}</div>` +
+        `<div class="si-kana">${w.kana}</div>` +
+        `<div class="si-sub">${w.ja}</div>`;
+    } else {
+      el.innerHTML =
+        `<div class="si-main">${w.ja}</div>` +
+        `<div class="si-sub">${w.en} <span class="si-kana">[${w.kana}]</span></div>`;
+    }
+    list.appendChild(el);
+  });
+  area.style.display = '';
+}
 
 // ── ユーティリティ ────────────────────────────────────────
 function show(name) {
