@@ -46,6 +46,7 @@ def load_csv(name: str, path: Path) -> list[dict]:
                 "en":   row["english"].strip(),
                 "kana": row["kana"].strip(),
                 "ja":   row["japanese"].strip(),
+                "pos":  row.get("pos", "").strip(),
             })
     return words
 
@@ -127,13 +128,14 @@ def quiz(pool: list[dict], direction: str):
         else:
             d = "en_to_ja" if direction == "1" else "ja_to_en"
 
+        pos_str = f"  [{word['pos']}]" if word.get("pos") else ""
         if d == "en_to_ja":
-            print(f"\n  ❓  {word['en']}")
+            print(f"\n  ❓  {word['en']}{pos_str}")
             print(f"      読み: {word['kana']}")
             input("\n  Enter で答えを確認... ")
             print(f"\n  ✅  {word['ja']}")
         else:
-            print(f"\n  ❓  {word['ja']}")
+            print(f"\n  ❓  {word['ja']}{pos_str}")
             input("\n  Enter で答えを確認... ")
             print(f"\n  ✅  {word['en']}")
             print(f"      読み: {word['kana']}")
@@ -166,7 +168,8 @@ def quiz(pool: list[dict], direction: str):
     if wrong_list:
         print(f"\n  【要復習リスト】")
         for w in wrong_list:
-            print(f"  ・{w['en']}（{w['kana']}）→ {w['ja']}")
+            pos_tag = f" [{w['pos']}]" if w.get("pos") else ""
+            print(f"  ・{w['en']}（{w['kana']}）→ {w['ja']}{pos_tag}")
 
 
 # ─────────────────────────────────────────────────────────

@@ -288,6 +288,22 @@
     .wi-en   { font-weight: 700; font-size: 0.95rem; }
     .wi-kana { font-size: 0.82rem; color: var(--sub); }
     .wi-ja   { font-size: 0.9rem; color: var(--sub); margin-top: 2px; }
+    .wi-pos  { font-size: 0.75rem; color: var(--primary); background: #e8f0fe; display: inline-block; padding: 2px 8px; border-radius: 12px; margin-top: 4px; font-weight: 600; }
+
+    /* ── 品詞バッジ ── */
+    .pos-badge {
+      display: inline-block;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #5f6b8b;
+      background: #eef2fb;
+      border: 1px solid #c8d4f0;
+      padding: 3px 12px;
+      border-radius: 20px;
+      margin-top: 10px;
+      letter-spacing: 0.04em;
+    }
+    .pos-badge:empty { display: none; }
   </style>
 </head>
 <body>
@@ -336,6 +352,7 @@
     <div class="word-card" id="word-card" onclick="reveal()">
       <div class="q-main" id="q-main"></div>
       <div class="q-kana" id="q-kana"></div>
+      <div id="q-pos" class="pos-badge"></div>
       <div class="q-hint" id="q-hint">タップして答えを確認</div>
       <div class="answer-area" id="answer-area" style="display:none">
         <hr class="divider">
@@ -398,12 +415,13 @@ function parseCSV(name, text) {
   return text.trim().split('\n').slice(1)
     .filter(l => l.trim())
     .map(l => {
-      const i1 = l.indexOf(','), i2 = l.indexOf(',', i1 + 1);
+      const i1 = l.indexOf(','), i2 = l.indexOf(',', i1 + 1), i3 = l.indexOf(',', i2 + 1);
       return {
         set:  name,
         en:   l.slice(0, i1).trim(),
         kana: l.slice(i1 + 1, i2).trim(),
-        ja:   l.slice(i2 + 1).trim(),
+        ja:   i3 >= 0 ? l.slice(i2 + 1, i3).trim() : l.slice(i2 + 1).trim(),
+        pos:  i3 >= 0 ? l.slice(i3 + 1).trim() : '',
       };
     });
 }
@@ -499,6 +517,7 @@ function renderCard() {
 
   document.getElementById('q-main').textContent = d === 'en' ? w.en   : w.ja;
   document.getElementById('q-kana').textContent = d === 'en' ? w.kana : '';
+  document.getElementById('q-pos').textContent  = w.pos || '';
   document.getElementById('a-main').textContent = d === 'en' ? w.ja   : w.en;
   document.getElementById('a-kana').textContent = d === 'en' ? ''     : `読み: ${w.kana}`;
 
@@ -584,7 +603,7 @@ function showResult() {
     S.ng.forEach(w => {
       const el = document.createElement('div');
       el.className = 'wrong-item';
-      el.innerHTML = `<div class="wi-en">${w.en}</div><div class="wi-kana">${w.kana}</div><div class="wi-ja">${w.ja}</div>`;
+      el.innerHTML = `<div class="wi-en">${w.en}</div><div class="wi-kana">${w.kana}</div><div class="wi-ja">${w.ja}</div>${w.pos ? `<div class="wi-pos">${w.pos}</div>` : ''}`;
       wrongItems.appendChild(el);
     });
     wrongBox.style.display = '';
