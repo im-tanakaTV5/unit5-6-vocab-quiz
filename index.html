@@ -227,32 +227,6 @@
     .btn-home:hover { background: var(--border); color: var(--text); }
     .btn-home:active { transform: scale(0.96); }
 
-    /* ── 類似単語 ── */
-    .similar-box {
-      margin-top: 14px;
-      border-top: 1px solid var(--border);
-      padding-top: 12px;
-      text-align: left;
-    }
-    .similar-label {
-      font-size: 0.76rem;
-      font-weight: 700;
-      color: #e67e22;
-      letter-spacing: 0.05em;
-      margin-bottom: 8px;
-    }
-    .similar-item {
-      background: #fff8f0;
-      border: 1px solid #fde8cc;
-      border-radius: 10px;
-      padding: 9px 12px;
-      margin-bottom: 6px;
-    }
-    .similar-item:last-child { margin-bottom: 0; }
-    .si-main { font-weight: 700; font-size: 0.9rem; }
-    .si-kana { font-size: 0.78rem; color: var(--sub); }
-    .si-sub  { font-size: 0.85rem; color: var(--text); margin-top: 2px; }
-
     /* ── 結果 ── */
     .result-box {
       background: var(--card);
@@ -359,10 +333,6 @@
         <div class="a-main" id="a-main"></div>
         <div class="a-kana" id="a-kana"></div>
         <div id="ans-stamp" style="display:none"></div>
-        <div id="similar-area" style="display:none" class="similar-box">
-          <div class="similar-label">⚠ 混同しやすい単語</div>
-          <div id="similar-items"></div>
-        </div>
       </div>
     </div>
 
@@ -411,19 +381,43 @@ const S = {
 };
 
 // ── CSV 読み込み ──────────────────────────────────────────
+// RFC 4180 準拠：引用符で囲まれたカンマ・改行・"" エスケープに対応する
+function parseCSVRows(text) {
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  const s = text.replace(/\r\n?/g, '\n');
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (s[i + 1] === '"') { field += '"'; i++; }  // "" → " のエスケープ
+        else inQuotes = false;
+      } else field += c;
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ',') {
+      row.push(field); field = '';
+    } else if (c === '\n') {
+      row.push(field); rows.push(row); row = []; field = '';
+    } else {
+      field += c;
+    }
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
 function parseCSV(name, text) {
-  return text.trim().split('\n').slice(1)
-    .filter(l => l.trim())
-    .map(l => {
-      const i1 = l.indexOf(','), i2 = l.indexOf(',', i1 + 1), i3 = l.indexOf(',', i2 + 1);
-      return {
-        set:  name,
-        en:   l.slice(0, i1).trim(),
-        kana: l.slice(i1 + 1, i2).trim(),
-        ja:   i3 >= 0 ? l.slice(i2 + 1, i3).trim() : l.slice(i2 + 1).trim(),
-        pos:  i3 >= 0 ? l.slice(i3 + 1).trim() : '',
-      };
-    });
+  return parseCSVRows(text)
+    .slice(1)                                        // ヘッダー行を捨てる
+    .filter(cols => cols.some(c => c.trim() !== '')) // 空行を除外
+    .map(cols => ({
+      set:  name,
+      en:   (cols[0] || '').trim(),
+      kana: (cols[1] || '').trim(),
+      ja:   (cols[2] || '').trim(),
+      pos:  (cols[3] || '').trim(),
+    }));
 }
 
 async function init() {
@@ -528,15 +522,12 @@ function renderCard() {
     document.getElementById('q-hint').style.display       = 'none';
     document.getElementById('answer-area').style.display  = '';
     document.getElementById('ans-btns').style.display     = 'none';
-    document.getElementById('similar-area').style.display = 'none';
     card.classList.add('answered');
-    renderSimilar(w);
     renderStamp(S.results[S.cur]);
   } else {
     document.getElementById('q-hint').style.display       = '';
     document.getElementById('answer-area').style.display  = 'none';
     document.getElementById('ans-btns').style.display     = 'none';
-    document.getElementById('similar-area').style.display = 'none';
     document.getElementById('ans-stamp').style.display    = 'none';
     card.classList.remove('answered');
   }
@@ -571,7 +562,6 @@ function reveal() {
   document.getElementById('answer-area').style.display = '';
   document.getElementById('ans-btns').style.display    = '';
   document.getElementById('word-card').classList.add('answered');
-  renderSimilar(S.deck[S.cur]);
 }
 
 function mark(ok) {
@@ -624,80 +614,6 @@ function retryWrong() {
 }
 
 function goSetup() { show('setup'); }
-
-// ── 類似単語 ──────────────────────────────────────────────
-function levenshtein(a, b) {
-  const m = a.length, n = b.length;
-  const dp = Array.from({length: m + 1}, (_, i) => Array.from({length: n + 1}, (_, j) => i || j));
-  for (let i = 1; i <= m; i++)
-    for (let j = 1; j <= n; j++)
-      dp[i][j] = a[i-1] === b[j-1]
-        ? dp[i-1][j-1]
-        : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
-  return dp[m][n];
-}
-
-function enSimilarity(a, b) {
-  a = a.toLowerCase(); b = b.toLowerCase();
-  if (a === b) return 0;
-  const dist = levenshtein(a, b);
-  const maxLen = Math.max(a.length, b.length);
-  const ratio = 1 - dist / maxLen;
-  let pre = 0;
-  while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
-  return ratio + (pre >= 4 ? 0.15 : 0);
-}
-
-function jaSimilarity(a, b) {
-  if (a === b) return 0;
-  const ignore = new Set('するなのをはがにでもとやへからまでてしたけどよねだわいうこもれのー〜、。');
-  const charsA = new Set([...a].filter(c => !ignore.has(c)));
-  const charsB = new Set([...b].filter(c => !ignore.has(c)));
-  if (charsA.size === 0 || charsB.size === 0) return 0;
-  const shared = [...charsA].filter(c => charsB.has(c)).length;
-  return shared / Math.max(charsA.size, charsB.size);
-}
-
-function getSimilarWords(current, pool, maxCount = 2) {
-  const d = current._d;
-  return pool
-    .filter(w => w !== current)
-    .map(w => ({
-      w,
-      score: d === 'en'
-        ? enSimilarity(current.en, w.en)
-        : jaSimilarity(current.ja, w.ja),
-    }))
-    .filter(x => x.score >= 0.55)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, maxCount)
-    .map(x => x.w);
-}
-
-function renderSimilar(word) {
-  const similar = getSimilarWords(word, S.deck);
-  const area = document.getElementById('similar-area');
-  const list = document.getElementById('similar-items');
-  list.innerHTML = '';
-  if (!similar.length) { area.style.display = 'none'; return; }
-
-  similar.forEach(w => {
-    const el = document.createElement('div');
-    el.className = 'similar-item';
-    if (word._d === 'en') {
-      el.innerHTML =
-        `<div class="si-main">${w.en}</div>` +
-        `<div class="si-kana">${w.kana}</div>` +
-        `<div class="si-sub">${w.ja}</div>`;
-    } else {
-      el.innerHTML =
-        `<div class="si-main">${w.ja}</div>` +
-        `<div class="si-sub">${w.en} <span class="si-kana">[${w.kana}]</span></div>`;
-    }
-    list.appendChild(el);
-  });
-  area.style.display = '';
-}
 
 // ── ユーティリティ ────────────────────────────────────────
 function show(name) {
